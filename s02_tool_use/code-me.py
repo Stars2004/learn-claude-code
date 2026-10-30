@@ -196,6 +196,7 @@ def agent_loop(messages: list):
             # 拿到对应的处理函数
             handler = TOOL_HANDLERS.get(block.name)
             # 如果 handler 存在，就调用它；否则返回一个提示字符串。
+            # **block.input 是把字典解包成关键字参数传给函数。
             output = handler(**block.input) if handler else f"Unknown: {block.name}"
             print(str(output)[:200])
             results.append({"type": "tool_result", "tool_use_id": block.id, "content": output})
