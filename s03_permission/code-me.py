@@ -313,3 +313,6 @@ if __name__ == "__main__":
             if getattr(block, "type", None) == "text":
                 print(block.text)
         print()
+        print("======== the history ========")
+        print(history)
+        print("=============================")
