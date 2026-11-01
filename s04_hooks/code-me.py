@@ -269,38 +269,55 @@ register_hook("Stop", summary_hook)
 
 def agent_loop(messages: list):
     while True:
+        # 把当前对话发给模型，并保存回复
         response = client.messages.create(
             model=MODEL, system=SYSTEM, messages=messages,
             tools=TOOLS, max_tokens=8000,
         )
         messages.append({"role": "assistant", "content": response.content})
 
+        # 从模型回复里找出工具调用
         tool_calls = [
             block for block in response.content if block.type == "tool_use"
         ]
+
+        # 如果没有工具调用，先触发 Stop Hook
         if not tool_calls:
             force = trigger_hooks("Stop", messages)
+            # 返回真值 → 把返回内容交给模型，继续循环
             if force:
                 messages.append({"role": "user", "content": force})
                 continue
+            # 返回假值 → 结束函数
             return
 
+        # 有工具调用时，为本轮准备结果列表
         results = []
         for block in tool_calls:
             # s04 change: hook replaces hard-coded check_permission()
+            # 执行工具之前，触发 PreToolUse Hook
+            # 如果权限 Hook 返回拒绝原因，trigger_hooks() 会提前返回，日志 Hook 就不会运行。
             blocked = trigger_hooks("PreToolUse", block)
+            
+            # 把拒绝原因作为这个工具调用的结果，然后跳过实际执行。
+            # 拒绝也要返回结果，这样模型才能知道这次请求没有执行。
             if blocked:
                 results.append({"type": "tool_result", "tool_use_id": block.id,
                                 "content": str(blocked)})
+                # 它跳过的是当前工具调用，然后继续处理下一个工具。它不会立即回到外层的模型请求循环。
                 continue
 
+            # 执行工具调用
             handler = TOOL_HANDLERS.get(block.name)
             output = handler(**block.input) if handler else f"Unknown: {block.name}"
 
+            # 工具执行后，触发 PostToolUse Hook
             trigger_hooks("PostToolUse", block, output)  # s04: post hook
 
+            # 把工具执行结果加入本轮结果列表
             results.append({"type": "tool_result", "tool_use_id": block.id, "content": output})
 
+        # 把本轮结果列表作为用户消息，交给模型
         messages.append({"role": "user", "content": results})
 
 
@@ -319,6 +336,7 @@ if __name__ == "__main__":
             continue
         if query.strip().lower() in ("q", "exit"):
             break
+        # 触发用户输入 Hook 打印工作目录
         trigger_hooks("UserPromptSubmit", query)
         history.append({"role": "user", "content": query})
         agent_loop(history)
@@ -326,3 +344,6 @@ if __name__ == "__main__":
             if getattr(block, "type", None) == "text":
                 print(block.text)
         print()
+        print("======== the history ========")
+        print(history)
+        print("=============================")
