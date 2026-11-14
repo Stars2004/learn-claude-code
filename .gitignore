@@ -235,3 +235,4 @@ analysis/
 analysis_progress.md
 
 .DS_Store
+.vscode
